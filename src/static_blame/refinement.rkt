@@ -10,9 +10,7 @@
 
 (provide (except-out
           (all-defined-out)
-          (struct-out TVar)
-          (struct-out Scope)
-          (struct-out FVar)))
+          ))
 
 
 
@@ -21,6 +19,53 @@
 ;; however, not every textual object in AST have src attached,
 ;; and we need to do special optimization for it.
 
+;; refinements we need:
+;; functions: arg- one for each position and ret-value
+;; tuples: numbered records, one for each number
+;; box: for its content.
+;; Vector: *One* for its content.
+
+;; program point p point
+(struct Ppoint (src)
+  #:transparent)
+
+;; (struct Bndpoint Ppoint (bnd-id)
+;;   #:transparent)
+
+(struct Clabel (ppoint ref*)
+  #:transparent)
+
+(struct Cref () #:transparent)
+
+(define-syntax (define-struct-transparent stx)
+  (syntax-case stx ()
+    [(_ super (name* field** ...) ...)
+     (begin
+       #'(begin (struct name* super (field** ...) #:transparent) ...))]))
+(define-struct-transparent Cref
+  (Idref uid)
+  (Fdomref index)
+  (Franref)
+  (Boxref)
+  (Vecref)
+  (Tupref index))
+
+(define (refine-a-clabel clabel refinement) 
+  (match-define (Clabel ppoint ref*) clabel)
+  (Clabel ppoint (cons refinement  ref*)))
+
+(define (mk-empty-clabel ppoint)
+  (Clabel ppoint '()))
+
+(define (srcloc->ppoint [src 'toplevel])
+  (Ppoint src))
+
+
+
+
+
+
+#| 
 (struct position-label (src)
   #:transparent)
 (struct binding-position-label position-label (bnd-id)
@@ -55,6 +100,10 @@
   (context-label (position-label src) '()))
 (define (make-binding-context-label bnd-src bnd-id)
   (context-label (binding-position-label bnd-src bnd-id)))
+(define (add-refinement (clabel))
+  ;;refine a context label.
+  (match-define )
+  )
 
 
 (define-syntax (define-type/labeled stx)
@@ -186,7 +235,7 @@
   (define mu-int
     (Mu (Scope (STuple 2 (list INT-TYPE (TVar 0))))))
   (define  function-type
-    (Fn 2 `(,(Dyn) ,(Dyn)) (Dyn))))
+    (Fn 2 `(,(Dyn) ,(Dyn)) (Dyn)))) |#
 
 
 
