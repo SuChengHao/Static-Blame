@@ -44,9 +44,11 @@
        #'(begin (struct name* super (field** ...) #:transparent) ...))]))
 (define-struct-transparent Cref
   (Idref uid)
+  (Constref c)
   (Fdomref index)
   (Franref)
   (Boxref)
+  (Castref) ;; generated environment
   (Vecref)
   (Tupref index))
 
@@ -59,6 +61,13 @@
 
 (define (srcloc->ppoint [src 'toplevel])
   (Ppoint src))
+(define (check-refinements ref*)
+  (for/and ([ref ref*])
+    (Cref? ref)))
+(define (check-clabel clabel)
+  (and (Clabel? clabel)
+       (check-refinements (Clabel-ref* clabel))))
+
 
 
 
