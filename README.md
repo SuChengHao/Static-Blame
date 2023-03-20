@@ -20,6 +20,7 @@ Static Blame is a static analysis tool designed for the Grift language. For now,
     1. RQ1 in [final report](grift-exp/final report.csv)
     2. RQ2 in [configuration test](grift-exp/configuration test.csv) and [size_test](grift-exp/size test.csv)
     3. Plot facilities in [main.py](grift-exp/main.py)
+4. Buf fixes for [language-grift](language-grift)
 
 ## Reproduction of evaluation results
 Make sure that you have installed `numpy` `pandas` and `matplotlib` in your python environment, and run main.py in the experimental directory.
