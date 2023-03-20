@@ -67,6 +67,8 @@
          (or (hash-ref eqs r #f) r)]))
     rec)
   (debug who type ((vt (set)) t)))
+
+
 ;; is `t1` a subtype of `t2`?
 (define (subtype-of? t1 t2)
   (define (type=? a t1 t2)
@@ -74,7 +76,7 @@
     ;; (and (rec/a a t1 t2) (rec/a a t2 t1) a)
     ;; (rec/a (rec/a a t1 t2) t2 t1))
     ;; no, I don't think it is correct.
-    (and (rec/a a t1 t2) (rec/a a t2 t1) a))
+    (and (rec/a t1 t2 a) (rec/a t2 t1 a) a))
   ;; substitute `t` for variables bound to this Mu to get
   ;; rid of this Mu scope.
   (define (rec/a-fold a t1 t2)
@@ -91,6 +93,59 @@
     (define (rec t1 t2)
       (cond
         [(equal? t1 t2) a]
+        [(not (or (Mu? t1) (Mu? t2)))
+         (match* (t1 t2)
+           [((STuple n a1*) (STuple m a2*))
+            #:when (<= m n)
+            (rec/a-fold a a1* a2*)]
+           ;; Contravariently function arguments
+           [((Fn n a1* r1) (Fn n a2* r2))
+            (rec/a-fold (rec r1 r2) a2* a1*)]
+           ;; Invarient Reference types
+           [((or (GVect a1) (GRef a1) (MVect a1) (MRef a1))
+             (or (GVect a2) (GRef a2) (MVect a2) (MRef a2)))
+            #:when (or (and (GVect? t1) (GVect? t2))
+                       (and (GRef?  t1) (GRef?  t2))
+                       (and (MVect? t1) (MVect? t2))
+                       (and (MRef?  t1) (MRef?  t2)))
+            (type=? a a1 a2)]
+           [(_ _) #f])]
+        [else
+         (define p (cons t1 t2))
+         (cond
+           [(set-member? a p) a]
+           [(Mu? t1) (rec/a (unfold-mu t1) t2 (set-add a p))]
+           [(Mu? t2) (rec/a t1 (unfold-mu t2) (set-add a p))]
+           [else (error 'subtype-of?)])]))
+    (rec t1 t2))
+  (debug 'subtype-of? t1 t2 (rec/a t1 t2 (set))))
+
+;; is `t1` a subtype of `t2`?
+(define (consis-subtype-of? t1 t2)
+  (define (type=? a t1 t2)
+    ;; I think this is a more optimized version of
+    ;; (and (rec/a a t1 t2) (rec/a a t2 t1) a)
+    ;; (rec/a (rec/a a t1 t2) t2 t1))
+    ;; no, I don't think it is correct.
+    (and (rec/a t1 t2 a) (rec/a t2 t1 a) a))
+  ;; substitute `t` for variables bound to this Mu to get
+  ;; rid of this Mu scope.
+  (define (rec/a-fold a t1 t2)
+    (cond
+      [(not a) #f]
+      [else
+       (match* (t1 t2)
+         [('() _) a]
+         [(_ '()) a]
+         [((cons a1 d1) (cons a2 d2))
+          (rec/a-fold (rec/a a1 a2 a) d1 d2)]
+         [(_ _) (error 'rec/a-fold)])]))
+  (define (rec/a t1 t2 a)
+    (define (rec t1 t2)
+      (cond
+        [(equal? t1 t2) a]
+        [(Dyn? t1) a]
+        [(Dyn? t2) a]
         [(not (or (Mu? t1) (Mu? t2)))
          (match* (t1 t2)
            [((STuple n a1*) (STuple m a2*))
@@ -162,7 +217,7 @@
   (match ltype
     [(Ltype clabel gtype)
      (cond
-       [(Dyn? gtype)
+       [(GRef? gtype)
         (mk-ltype (refine-a-clabel clabel (Boxref)) (GRef-arg gtype))]
        [else
         (mk-ltype (refine-a-clabel clabel (Boxref)) DYN-TYPE)])
@@ -254,7 +309,8 @@
 (define ((cast-elimination? flow1) flow2)
   (match-define (Tyflow (Ltype _ t1) (Ltype _ (? Dyn?)) _ ) flow1)
   (match-define (Tyflow (Ltype _ (? Dyn?)) (Ltype _ t2) _ ) flow2)
-  (subtype-of? t1 t2))
+  (consis-subtype-of? t1 t2))
+
 (define (flow-subtype-of? flow)
   (match-define (Tyflow (Ltype _ t1) (Ltype _ t2) _) flow)
   (subtype-of? t1 t2))
@@ -262,6 +318,19 @@
 (define (flow-consistent? flow)
   (match-define (Tyflow (Ltype _ t1) (Ltype _ t2) _) flow)
   (consistent? t1 t2))
+(define (flow-consis-subtype-of? flow)
+  (match-define (Tyflow (Ltype _ t1) (Ltype _ t2) _) flow)
+  (consis-subtype-of? t1 t2))
+
+(define (ltype-consistent? Lt1 Lt2)
+  (match-define (Ltype _ t1) Lt1)
+  (match-define (Ltype _ t2) Lt2)
+  (consistent? t1 t2))
+
+(define (ltype-consis-subtype-of? Lt1 Lt2)
+  (match-define (Ltype _ t1) Lt1)
+  (match-define (Ltype _ t2) Lt2)
+  (consis-subtype-of? t1 t2))
 
 
 (define (function-flow? flow)
@@ -270,11 +339,11 @@
 
 (define (box-flow? flow)
   (match-define (Tyflow (Ltype _ t1) (Ltype _ t2)  _) flow)
-  (and (Gbox? t1) (Gbox? t2)))
+  (and (GRef? t1) (GRef? t2)))
 
 (define (vector-flow? flow)
   (match-define (Tyflow (Ltype _ t1) (Ltype _ t2)  _) flow)
-  (and (Gvector? t1) (Gvector? t2)))
+  (and (GVect? t1) (GVect? t2)))
 (define (tuple-flow? flow)
   (match-define (Tyflow (Ltype _ t1) (Ltype _ t2)  _) flow)
   (and (STuple? t1) (STuple? t2)))
@@ -298,13 +367,15 @@
   (match-define (Tyflow (and lt1 (Ltype _ t1)) (and lt2 (Ltype _ t2))  flag) flow)
   (let ([lt1-con (box-ltype->content-ltype lt1)]
         [lt2-con (box-ltype->content-ltype lt2)])
-    (Tyflow lt1-con lt2-con flag)))
+    (list (Tyflow lt1-con lt2-con flag)
+          (Tyflow lt2-con lt1-con flag))))
 
 (define (vector-decomposition flow)
   (match-define (Tyflow (and lt1 (Ltype _ t1)) (and lt2 (Ltype _ t2))  flag) flow)
   (let ([lt1-con (vector-ltype->content-ltype lt1)]
         [lt2-con (vector-ltype->content-ltype lt2)])
-    (Tyflow lt1-con lt2-con flag)))
+    (list (Tyflow lt1-con lt2-con flag)
+          (Tyflow lt2-con lt1-con flag))))
 
 (define (tuple-decomposition flow)
   (match-define (Tyflow (and lt1 (Ltype _ (STuple n _))) (and lt2 (Ltype _ t2))  flag) flow)
@@ -320,61 +391,159 @@
              (if (set-member? mutset n)
                  res
                  (begin
-                   (add-type-flow-to-a-solver solver n)
+                   (add-type-flow-to-a-solver n solver)
                    #t))) #f lst))
 
 (define (solve-a-solver solver)
   ;;forever loop
-  
   (match-define (CSolver solver-set inflows outflows) solver)
   (define saturation-list
+    
     (let ([work-list (set->list solver-set)])
-      (for/fold ([new-flows-to-add (list)])
-                ([flow work-list])
-        (match-define (Tyflow from to flag) flow)
-        (cond
-          [(not (flow-consistent? flow))
-           (error 'inner-logical-error (format "The flow ~a is not about consistent ltypes" (pretty-format flow)))]
-          [(dummy? flow)
-           ;; for all out-flow of the next
-           (define pre-flows (hash-ref inflows from (set)))
-           (define new-flows (map (lambda (flow)
-                                    (match flow
-                                      ([Tyflow new-from _ lth]
-                                       (Tyflow new-from to lth))))
-                                  (set->list pre-flows)))
-           (append new-flows new-flows-to-add)]
-          [(up-cast? flow)
-           ;; for-each down cast, trans if consistency hold
-           ;; otherwise, ignore it.
-           ;; for-each trans-cast, trans it.
-           (define next-flows (hash-ref outflows to (set)))
-           (define next-flows-list (set->list next-flows))
-           (let* ([down-casts (filter down-cast? next-flows-list)]
-                  [trans-casts (filter trans-cast? next-flows-list)]
-                  [down-cast-to-eli (filter (cast-elimination? flow) down-casts)])
-             (define down-cast-elimination (map (lambda (flow)
-                                                  (match flow
-                                                    ([Tyflow _ new-to lth]
-                                                     (Tyflow from new-to lth)))) down-cast-to-eli))
-             (define trans-cast-elimination (map (lambda (flow)
-                                                   (match flow
-                                                     ([Tyflow _ new-to _]
-                                                      (Tyflow from new-to flag)))) trans-casts))
-             (append down-cast-elimination trans-cast-elimination new-flows-to-add))]
-          [(function-flow? flow)
-           (define new-flows (function-decomposition flow))
-           (append new-flows new-flows-to-add)]
-          [(box-flow? flow)
-           (define new-flows (list (box-decomposition flow)))
-           (append new-flows new-flows-to-add)]
-          [(vector-flow? flow)
-           (define new-flows (list (vector-decomposition flow)))
-           (append new-flows new-flows-to-add)]
-          [(tuple-flow? flow)
-           (define new-flows (tuple-decomposition flow))
-           (append new-flows new-flows-to-add)]))))
+      (define lst-1
+        (for/fold ([new-flows-to-add (list)])
+                  ([flow work-list])
+          (match-define (Tyflow from to flag) flow)
+          (cond
+            [(not (flow-consis-subtype-of? flow))
+             (error 'inner-logical-error (format "The flow ~a is not about consistent ltypes" (pretty-format flow)))]
+            [(dummy? flow)
+             ;; for all out-flow of the next
+             (define pre-flows (hash-ref inflows from (set)))
+             (define new-flows (map (lambda (flow)
+                                      (match flow
+                                        ([Tyflow new-from _ lth]
+                                         (Tyflow new-from to lth))))
+                                    (set->list pre-flows)))
+             (append new-flows new-flows-to-add)]
+            [(up-cast? flow)
+             ;; for-each down cast, trans if consistency hold
+             ;; otherwise, ignore it.
+             ;; for-each trans-cast, trans it.
+             (define next-flows (hash-ref outflows to (set)))
+             (define next-flows-list (set->list next-flows))
+             (let* ([down-casts (filter down-cast? next-flows-list)]
+                    [trans-casts (filter trans-cast? next-flows-list)]
+                    [down-cast-to-eli (filter (cast-elimination? flow) down-casts)])
+               (define down-cast-elimination (map (lambda (flow)
+                                                    (match flow
+                                                      ([Tyflow _ new-to lth]
+                                                       (Tyflow from new-to lth)))) down-cast-to-eli))
+               (define trans-cast-elimination (map (lambda (flow)
+                                                     (match flow
+                                                       ([Tyflow _ new-to _]
+                                                        (Tyflow from new-to flag)))) trans-casts))
+               (append down-cast-elimination trans-cast-elimination new-flows-to-add))]
+            [else
+             new-flows-to-add])))
+      (define lst-2
+        (for/fold ([new-flows-to-add (list)])
+                  ([flow work-list])
+          (match-define (Tyflow from to flag) flow)
+          (cond
+            [(function-flow? flow)
+             (define new-flows (function-decomposition flow))
+             (append new-flows new-flows-to-add)]
+            [(box-flow? flow)
+             (define new-flows (box-decomposition flow))
+             (append new-flows new-flows-to-add)]
+            [(vector-flow? flow)
+             (define new-flows  (vector-decomposition flow))
+             (append new-flows new-flows-to-add)]
+            [(tuple-flow? flow)
+             (define new-flows (tuple-decomposition flow))
+             (append new-flows new-flows-to-add)]
+            [else
+             new-flows-to-add])))
+      (append lst-1 lst-2)))
+
+  
   (when (add-lst-to-solver saturation-list solver)
     (solve-a-solver solver)))
+
+;; potential error is a set.
+(struct SolverReport
+  (solver solution-mseconds normal strict dynamic)
+  #:transparent)
+
+(define (make-report-statistic report)
+  (match-define (SolverReport solver solution-seconds normal strict dynamic) report)
+  (format "Number of Constraints: ~a\nSolution Time: ~a\nNormal Potential Errors: ~a\nStrict Potential Errors: ~a\nWrong Dynamic types: ~a\n"
+          (sequence-length (CSolver-collection solver))
+          solution-seconds
+          (sequence-length normal)
+          (sequence-length strict)
+          (sequence-length dynamic)))
+
+(define (report-props report)
+  (match-define (SolverReport solver solution-seconds normal strict dynamic) report)
+  (values (sequence-length (CSolver-collection solver))
+          solution-seconds
+          (sequence-length normal)
+          (sequence-length strict)
+          (sequence-length dynamic)))
+
+(define (report-props-refined report)
+  (match-define (SolverReport solver solution-seconds normal strict dynamic) report)
+  (define-values (n-dum n-not-dum)
+    (for/fold ([n-dummy 0]
+               [n-not-dummy 0])
+              ([flow (CSolver-collection solver)])
+      (if (dummy? flow)
+          (values (+ n-dummy 1) n-not-dummy)
+          (values n-dummy (+ n-not-dummy 1)))
+      ))
+  (values n-dum n-not-dum solution-seconds))
+
+
+(define (make-solver-report/aux solver mseconds normal strict dynamic)
+  (SolverReport solver mseconds normal strict dynamic))
+
+(define (statistic-solver solver)
+  (match-define (CSolver solver-set inflows outflows) solver)
+  (let ([normal-potential-error (mutable-set)]
+        [strict-potential-error (mutable-set)]
+        [wrong-dynamic-type (mutable-set)])
+    ;; how? for each out-flow,
+    (for ([work-flow solver-set]
+          #:when (down-cast? work-flow))
+      (match-define (Tyflow dyn-from to-ty flag) work-flow)
+      ;; first test whether it is a normal potential error
+      (define-values (ni si ti) 
+        (for/fold ([normal-indicator #f]
+                   [strict-indicator #t]
+                   [times-indicator 0])
+                  ([a-in-flow (hash-ref inflows dyn-from (set))]
+                   #:when (not (trans-cast? a-in-flow)))
+          (let ([inconsis? (not (ltype-consis-subtype-of? (Tyflow-from a-in-flow) to-ty))])
+            (values (or inconsis? normal-indicator)
+                    (and inconsis? strict-indicator)
+                    (+ times-indicator 1)))))
+      (when ni
+        (set-add! normal-potential-error work-flow))
+      (when (and si (> ti 0))
+        (set-add! strict-potential-error work-flow)))
+    ;; now, determines the wrong dynamic types
+    (for ([strict strict-potential-error])
+      (match-define (Tyflow dyn-from _ _) strict)
+      (when
+          (for/fold ([wrong-indicator #t])
+                    ([o-f (hash-ref outflows dyn-from (set))]
+                     #:when (not (trans-cast? o-f)))
+            (and wrong-indicator (set-member? strict-potential-error o-f)))
+        (set-add! wrong-dynamic-type dyn-from)))
+    (values normal-potential-error strict-potential-error wrong-dynamic-type)))
+
+
+(define (solver-report solver solution-mseconds normal-potential-error strict-potential-error wrong-dynamic-type )
+  (make-solver-report/aux solver solution-mseconds normal-potential-error strict-potential-error wrong-dynamic-type))
+
+;; find all strict error, normal potential error and wrong dynamic types.
+;; then
+;; (define (report-error solver)) 
+
+(module+ test
+  
+  )
 
 

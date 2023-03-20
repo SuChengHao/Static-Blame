@@ -1,16 +1,7 @@
 #lang racket/base
-#|------------------------------------------------------------------------------+
-|Pass: src/read                                                                 |
-+-------------------------------------------------------------------------------+
-|Author: Andre Kuhlenshmidt (akuhlens@indiana.edu)                              |
-+-------------------------------------------------------------------------------+
-|Discription: This pass simply reads in a file given a path. The reader is 
-|the function read-syntax so that the source locations may be lifted from the
-|syntax-objects as we convert them to core forms.
-+------------------------------------------------------------------------------|#
 (require
- "../language/forms.rkt"
- "../logging.rkt"
+ 
+ 
  racket/exn
  racket/path)
 
@@ -43,17 +34,17 @@ it as a list.
 ;(: read-syntax-from-file (Path String . -> . (Listof (Syntaxof Any))))
 (define (read-syntax-from-file path name)
   (unless (file-exists? path)
-    (error 'grift
+    (error 'grift/read
            "couldn't read grift source code\n\tno such file: ~a"
            path))
   (when (directory-exists? path)
-    (error 'grift
+    (error 'grift/read
            (string-append
             "couldn't read grift source code:\n"
             "\t found director instead of text file: ~a")
            path))
   (define (handle-unkown-read-exception e)
-    (error 'grift
+    (error 'grift/read
            "couldn't read grift source code:\n\tunkown exception follows\n~a"
            (exn->string e)))
   (with-handlers ([exn? handle-unkown-read-exception])
@@ -92,7 +83,4 @@ Collects the syntax from a file and returns it a Syntax-Prog ast.
        [read-accept-reader #f]
        [read-accept-lang #f])
     (let ([name (get-name-of-file path)])
-      (debug path (Prog name (read-syntax-from-file path name))))))
-
-
-
+       (read-syntax-from-file path name))))

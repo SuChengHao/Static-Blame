@@ -1,0 +1,81 @@
+cabal-version:       >=1.8
+name:                dynamizer
+version:             0.1.0.0
+Copyright:           (c) 2015 - present Deyaaeldeen Almahallawi
+synopsis:            dynamizer produces all valid less precisely-typed versions of a valid program in Grift.
+-- description:         
+homepage:            https://github.com/Gradual-Typing/Dynamizer
+license:             GPL-3
+license-file:        LICENSE
+author:              Deyaaeldeen Almahallawi
+maintainer:          Deyaaeldeen Almahallawi <diaa6510@gmail.com>
+Bug-reports:         https://github.com/Gradual-Typing/Dynamizer/issues
+-- copyright:           
+category:            Language
+Stability:           experimental   
+build-type:          Simple
+extra-source-files:  README.md, LICENSE
+Source-repository head
+   type: git
+   location: git://github.com/Gradual-Typing/Dynamizer.git
+
+library dynamizer-lib
+  exposed-modules:     Dynamizer.Dynamizable
+                     , Dynamizer.Lattice
+                     , Dynamizer.Logging
+                     , Dynamizer.Module
+                     , Dynamizer.Sampling
+  build-depends:       base
+                     , containers
+                     , dlist
+                     , intervals
+                     , language-grift
+                     , mmorph
+                     , monad-logger
+                     , MonadPrompt
+                     , mtl
+                     , mwc-random
+                     , random
+                     , random-extras
+                     , random-fu
+                     , random-shuffle
+                     , rvar
+                     , text
+                     , tf-random
+                     , transformers
+  default-language:    Haskell2010
+  ghc-options:
+    -Wall -O2
+
+executable dynamizer
+  main-is:             Main.hs
+  other-modules:       CmdOptions
+  build-depends:       base
+                     , directory
+                     , dlist
+                     , dynamizer-lib
+                     , filepath
+                     , language-grift
+                     , optparse-applicative
+  hs-source-dirs:      Dynamizer
+  default-language:    Haskell2010
+  ghc-options:
+    -Wall -O2 -threaded
+
+test-suite test
+  type:                exitcode-stdio-1.0
+  main-is:             Main.hs
+  hs-source-dirs:      test
+  other-modules:       Test.Sampling
+  build-depends:       base
+                     , dynamizer-lib
+                     , generic-random
+                     , intervals
+                     , language-grift
+                     , QuickCheck
+                     , random
+                     , tf-random
+                     , transformers
+  default-language:    Haskell2010
+  ghc-options:
+    -Wall -O2 -threaded

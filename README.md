@@ -1,90 +1,32 @@
-# Grift
+# Static Blame
 
-Grift is a gradually-typed language that was designed and implemented from
-scratch. The runtime system is completely designed with the goal to minimize the
-overhead of runtime checking for the gradually-typed language it implements.
-The compiler implements a variant of space-efficient coercions and
-space-efficient monotonic heap. Space-efficiency requires more work to be done
-when casting an already casted value at runtime which is typically some sort of
-merging between the old and the new casts. On the other hand, it is much cheaper
-to access an already casted value because it is guaranteed to go through a
-single layer of checks instead of a chain of casts that is linear in the number
-of times this value has been casted before. Grift's runtime also represents
-values and types in a way that makes many operations on them that are related to
-runtime checking very efficient. Our self-comparison performance evaluation
-indicates that this approach increased performance substantially in comparison
-to our own implementation of the space-inefficient runtime. It also indicates
-that the overhead of doing merging is not expensive. Furthermore, fully typed
-and fully untyped code is in the ball-park of OCaml, and Typed Racket, and of
-Chez Scheme, Gambit Scheme, and Racket respectively.
+Warning: The project is not yet fully ready for open source, and although all code files are available, it does not yet have a complete interface for human use. It is full of Workarounds, such as absolute paths, bad variable names and inefficient functions. And, the documentation is not ready yet.
 
-## Getting Started
+It currently exists only as support material for our thesis and is used to demonstrate our work.
 
-```bash
-raco pkg install grift
+## Description
+Static Blame is a static analysis tool designed for the Grift language. For now, this project is a fork of [Grift repository](https://github.com/Gradual-Typing/Grift/tree/pldi19) with additional Static Blame files.
+
+## What we have done and Code Structure:
+1. The analysis tool, located in [src/static_blame](src/static_blame)
+    1. the type flow generation process located in [src/static_blame/type_flow_generation.rkt](src/static_blame/type_flow_generation.rkt)
+    2. the solver located in [src/static_blame/type_flow.rkt](src/static_blame/type_flow.rkt)
+    3. basic definitions in [src/static_blame/refinement.rkt](src/static_blame/refinement.rkt)
+    4. interface for scripts located in [src/static_blame/flow_analysis.rkt](src/static_blame/flow_analysis.rkt)
+2. Test scripts, located in [src/static_blame/test](src/static_blame/test)
+    1. Mutation analysis in [src/static_blame/test/mutate.rkt](src/static_blame/test/mutate.rkt)
+    2. Main scripts in [src/static_blame/test/script.rkt](src/static_blame/test/script.rkt)
+3. Test data, which you can use to re-generate main results.
+    1. RQ1 in [final report](grift-exp/final report.csv)
+    2. RQ2 in [configuration test](grift-exp/configuration test.csv) and [size_test](grift-exp/size test.csv)
+    3. Plot facilities in [main.py](grift-exp/main.py)
+
+## Reproduction of evaluation results
+Make sure that you have installed `numpy` `pandas` and `matplotlib` in your python environment, and run main.py in the experimental directory.
+```shell
+cd grift-exp
+python3 main.py
 ```
+And every data in the paper will output to the standard output and pictures will be shown.
+I recommend running it with [pycharm](https://www.jetbrains.com/pycharm)
 
-## Use as a Program
-
-The installation should install a "launcher" for `grift`. If not investigate
-where racket puts such things for your platform and add that to your path.
-
-```bash
-grift -o f5 tests/suite/program/fact-church-5.grift
-./f5
-```
-
-## Use as a library
-
-```racket
-#lang racket
-(require grift)
-(compile "tests/suite/program/n-body.grift"
-         #:output "n-body")
-(system "n-body")
-```
-
-## The Gradually Typed Lambda Calculus
-
-This is an incomplete grammar of the syntax of the GTLC. In the future
-we will try to document the language more carefully and link to that
-documentation here.
-
-```bnf
-Variables, X   ::= X
-Formals, F     ::= X | [X : Type]
-TopLevel, TE   ::= (define X E) | (define (X F ...) [: T] E ...) | E | TE ...
-Expression, E  ::= X
-Ascription     |   (ann E T [Blame Label])
-Binding        |   (let ((X [: T] E) ...) [: T] E ...)
-               |   (letrec ((X [: T] E) ...) E ...)
-Functions      |   (lambda (F ...) [: T] E ...)
-Application    |   (E_rator E_rand ...)
-Conditionals   |   (if E_cond E_conseq E_alt)
-Iteration      |   (repeat (x_i E_start E_end) [(x_acc [: T] E_init)] E)
-Sequencing     |   (begin E_eff ... E_value)
-Unit           |   ()
-Integer        |   n_i61 | (op_int E ...)
-Floats         |   n_f64 | (op_float E ...)
-Tuples         |   (tuple E ...) | (tuple-proj E n)
-References     |   (box E) | (unbox E) | (box-set! E_box E_box_update)
-               |   (make-vector E E) | (vector-ref E E) | (vector-set! E E E)
-ops            ::= + | -  | * | binary-and | binary-or | ...
-               |   fl+ | fl- | fl* | ...
-               |   < | <= | = | >= | > | ...
-               |   fl< | fl<= | fl= | fl>= | fl> | ...
-Type, T        ::= Dyn | Unit | Bool | Int | Float 
-               |   (-> T ...) | (Ref T) | (Vect T) | (Tuple T ...)
-               |   X | (Rec X T)
-```
-
-### Tinkering with the compiler
-- [/src/README.md](/src/README.md) contains an overview of the construction
-  of the compiler.
-- Customizing the editor to indent well
-   - Emacs users
-      - Try racket-mode by Greg Hindershot
-      - Get better highlighting and indentation using our file
-- Getting the most out of typed racket
-   - If typecheck time blows up consider profiling with 
-     `export PLTSTDERR="error debug@tr-timing"`

@@ -61,7 +61,7 @@
     (match tl
       [(Define r? id t2 (and (Ann _ (cons s t1)) (app (gtf-expr toplevel/extended) ltype-e)))
        (define lbl (mk-label "Define" s))
-       (cast-or-not lbl (hash-ref toplevel/extended id) ltype-e)]
+       (cast-or-not lbl ltype-e (hash-ref toplevel/extended id))]
       [(Observe e t) ((gtf-expr toplevel/extended) e)])))
 
 ;; note that we don't need srcloc or expression anymore
@@ -121,6 +121,7 @@
      (cast-or-not (mk-label "letrec" src)  ((gtf-expr env/extended) body) let-ltype)
      let-ltype]
     [(App rator rand*)
+     ;;(display "Sorry, I'm in\n")
      (match-define (Ann _ (cons rator-src (app unfold-possible-mu rator-type))) rator)
      (define app-ltype (mk-ltype out-clabel type))
      (match rator-type
@@ -141,12 +142,22 @@
               (add-dummy-flow rand-ltype arg-ltype)
               rand-type))) ;; there is no cast to arg-type
         (define needed-rator-type (Fn (length rand-type*) rand-type* DYN-TYPE))
-        (define lbl (mk-label "Application" src rator-src))
+        ;; the original blame label generating sucks
+        ;; 
+        ;; (define lbl (mk-label "Application" src rator-src))
+        (define lbl (mk-label "Application" src))
         (define rator-out-lype (mk-ltype rator-clabel needed-rator-type))
-        (cast-or-not lbl rator-inner-ltype rator-out-lype )
+        (cast-or-not lbl rator-inner-ltype rator-out-lype)
+
+        ;;missing flow, from the application to the ret
+        (define rator-ret-ltype (mk-ltype (refine-a-clabel rator-clabel (Franref)) DYN-TYPE))
+        (add-dummy-flow rator-ret-ltype  app-ltype)
+        ;; (display ("Add dummy flow from ~a to ~a\n" rator-inner-ltype rator-out-lype ))
         ]
        [(Fn n dom ret-type)
+        
         (define rator-ltype ((gtf-expr env) rator))
+        ;;(display (format "rator-ltype is : ~a \n" rator-ltype))
         (define rator-clabel (Ltype-clabel rator-ltype))
         (for/list ([rand rand*]
                    [index (in-naturals)]
@@ -155,6 +166,7 @@
             (define rand-ltype ((gtf-expr env (Castref)) rand))
             (define lbl (mk-label "application" src rand-src))
             (define arg-ltype (mk-ltype (refine-a-clabel rator-clabel (Fdomref index)) dom-index))
+            ;; (display (format "add flow from ~a to ~a\n" rand-ltype arg-ltype))
             (cast-or-not lbl rand-ltype arg-ltype)))
         
         ;; add dummy type-flow,
@@ -218,9 +230,10 @@
      ;; now create a binding
      (define repeat-ltype (mk-ltype out-clabel type))
      (define acc-ltype (mk-ltype (refine-a-clabel out-clabel (Idref acc)) type))
+     (define index-ltype (mk-ltype (refine-a-clabel out-clabel (Idref index)) INT-TYPE))
      (add-dummy-flow acc-ltype repeat-ltype)
      (cast-or-not (mk-label "Repeat" s3) e3-ltype repeat-ltype)
-     (let* ([env/extended (hash-set env acc acc-ltype)]
+     (let* ([env/extended (hash-set (hash-set env index index-ltype) acc acc-ltype)]
             [e4-ltype ((gtf-expr env/extended) e4)])
        (cast-or-not (mk-label "Repeat" s4) e4-ltype acc-ltype))
      repeat-ltype]
@@ -420,6 +433,12 @@
            "../grift/type-check.rkt")
   (require (rename-in "../grift/read.rkt"
                       (read grift-read)))
+
+  (define (prg->messages checked-prg)
+                    (define solver (make-constraint-solver))
+                    (parameterize ([current-solver solver])
+                      (generate-type-flows checked-prg))
+    (map Tyflow-blame-label (filter (lambda (x) (not (dummy? x))) (export-type-flow solver))))
   
   (define (list-grift-files-in path)
        (for/list ([f (in-directory path)] #:when (path-has-extension? f #".grift")) f))
@@ -439,7 +458,19 @@
      ))
   (require rackunit/text-ui)
   (run-tests iteration-tests))
-
+;; debug script
+;; (define (cast-stored->message c)
+;;                     (match-define (cons _ e)  c)
+;;                     (match e
+;;                       [ (Cast _ (Twosome _ _ message)) message]
+;;                       [(Dyn-GRef-Ref _ message) message]
+;;                       [(Dyn-GRef-Set! _ _ _ message) message]
+;;                       [(Dyn-GVector-Ref _ _ m) m]
+;;                       [(Dyn-GVector-Set! _ _ _ _ m) m]
+;;                       [(Dyn-GVector-Len _ (Quote m)) m]
+;;                       [(Dyn-Tuple-Proj _ _ (Quote m)) m]
+;;                       [(Dyn-Fn-App _ _ _ m) m]))
+;; (define stored-messages (map cast-stored->message (unbox casts-inserted)))
 
 
 
