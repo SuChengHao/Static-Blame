@@ -17,8 +17,10 @@ Static Blame is a static analysis tool designed for the Grift language. For now,
     1. Mutation analysis in [src/static_blame/test/mutate.rkt](src/static_blame/test/mutate.rkt)
     2. Main scripts in [src/static_blame/test/script.rkt](src/static_blame/test/script.rkt)
 3. Test data, which you can use to re-generate main results.
-    1. RQ1 in [final report](grift-exp/final report.csv)
-    2. RQ2 in [configuration test](grift-exp/configuration test.csv) and [size_test](grift-exp/size test.csv)
+    1. RQ1 in [final report](grift-exp/up-normal-pos-bug-detection-data.csv)
+        1. The manual classification for FP is listed in [spe_fps_work](grift-exp/second_annotation/spe_fps_work.csv) for strict potential error and [wdn-fps-transformed-work](grift-exp/annotation/wdn-fps-transformed-work.csv) for wrong dynamic types
+        2. The manual classification for FN is listed in [spe_fns_work](grift-exp/second_annotation/spe_fns_work.csv) for strict potential error and [wdt_fns_work](grift-exp/second_annotation/wdt_fns_work.csv) for wrong dynamic types
+    2. RQ2 in [lattice test](grift-exp/bug_dectector_new_size_lat_test/lattice_test.csv) and [size_test](grift-exp/bug_dectector_new_size_lat_test/size_config.csv)
     3. Plot facilities in [main.py](grift-exp/main.py)
 4. Buf fixes for [language-grift](language-grift)
 
