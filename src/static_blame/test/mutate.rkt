@@ -7,12 +7,18 @@
          fmt
          syntax/stx
          file/glob)
+(require mutate/logger)
+(require racket/syntax-srcloc)
+(require syntax/parse/debug)
 (require (rename-in "./grift-read.rkt"
                     (read grift-read)))
+(require "../component/stx-seq-loc.rkt")
 (provide read-program-from-name
          size-expander
-         syntax->string)
+         syntax->string
+         mutate-main-work)
 
+(define mutate-receiver (make-log-receiver mutate-logger 'info))
 
 (define-syntax-class binding
   [pattern (var:id (~optional (~seq (~datum :) ty )) rhs)])
@@ -46,55 +52,64 @@
 (define special-forms-list
   '(let define letrec : lambda if repeat begin tuple tuple-proj box unbox box-set! make-vector vector-ref vector-set! vector-length))
 (define ignore-tuple-proj
-  (syntax-parser
-    [({~datum tuple-proj} t i:integer)
-     (list #'t
-           (lambda (new-t) #`(tuple-proj #,new-t i))
-           empty)]
-    [other-e
-     (list #'other-e
-           (lambda (x) x)
-           empty)]))
+  (lambda (out-stx)
+    (syntax-parse out-stx
+      [({~datum tuple-proj} t i:integer)
+       (list #'t
+             (lambda (new-t) (quasisyntax/loc out-stx (tuple-proj #,new-t i)))
+             empty)]
+      [other-e
+       (list #'other-e
+             (lambda (x) x)
+             empty)])))
 ;; ignore type annotations
 (define ignore-type-annotations
-  (syntax-parser
-    [({~datum define} v:optionally-annotated-id e:expr)
-     (list #'e
-           (lambda (new-e) #`(define v.id (~? (~@ : v.ty))  #,new-e))
-           empty)]
-    [({~datum define} (f:id f*:formal-parameter ...) r:optional-colon-type e*:expr ... e:expr)
-     (list #'(begin-for-mutate e* ... e)
-           (lambda (new-es)
-             (syntax-parse new-es
-               [({~datum begin-for-mutate} e ...)
-                #`(define (f f* ...) (~? (~@ : r.ty) ) e ...)]))
-           empty)]
-    [({~or {~datum :} {~datum ann}} expr ty (~optional (~seq l:str)))
-     (list #'expr
-           (lambda (new-expr) #`(: #,new-expr ty (~? (~@ l))))
-           empty)]
-    [(bnd:binding ...)
-     (list #'(begin-for-mutate bnd.rhs ...)
-           (lambda (new-rhss)
-             ;; first, transfrom the results into list
-             ;; then, create new bindings
-             ;; then, combining the result
-             
-             (with-syntax ([(_ new/rhs ...) (syntax->list new-rhss)])
-               #`((bnd.var (~? (~@ : bnd.ty)) new/rhs) ...))
-             )
-           empty)]
-    [({~datum repeat} i:index-binding a:accumulator-binding M)
-     (list #'(begin i.start i.stop a.init M)
-           (lambda (new-exps)
-             (with-syntax ([(_ new-start new-stop new-init new-M) new-exps])
-               #'(repeat (i.id new-start new-stop) (a.id (~? (~@ : a.type)) new-init) new-M)
-               ))
-           empty)]
-    [other-e
-     (list #'other-e
-           (lambda (x) x)
-           empty)]))
+  (lambda (out-stx) 
+    (syntax-parse out-stx
+      [({~datum define} v:optionally-annotated-id e:expr)
+       (list #'e
+             (lambda (new-e) (quasisyntax/loc out-stx (define v.id (~? (~@ : v.ty))  #,new-e)))
+             empty)]
+      [({~datum define} (f:id f*:formal-parameter ...) r:optional-colon-type e*:expr ... e:expr)
+       (list (syntax/loc out-stx (begin-for-mutate e* ... e))
+             (lambda (new-es)
+               (syntax-parse new-es
+                 [({~datum begin-for-mutate} e ...)
+                  (quasisyntax/loc out-stx (define (f f* ...) (~? (~@ : r.ty) ) e ...))]))
+             empty)]
+      [({~datum lambda} (f*:formal-parameter ...) r:optional-colon-type e*:expr ... e:expr)
+       (list (syntax/loc out-stx (begin-for-mutate e* ... e))
+             (lambda (new-es)
+               (syntax-parse new-es
+                 [({~datum begin-for-mutate} e ...)
+                  (quasisyntax/loc out-stx (lambda (f* ...) (~? (~@ : r.ty) ) e ...))]))
+             empty)]
+      [({~or {~datum :} {~datum ann}} expr ty (~optional (~seq l:str)))
+       (list #'expr
+             (lambda (new-expr) (quasisyntax/loc out-stx (: #,new-expr ty (~? (~@ l)))))
+             empty)]
+      [(bnd:binding ...)
+       (list (syntax/loc out-stx (begin-for-mutate bnd.rhs ...))
+             (lambda (new-rhss)
+               ;; first, transfrom the results into list
+               ;; then, create new bindings
+               ;; then, combining the result
+               
+               (with-syntax ([(_ new/rhs ...) (syntax->list new-rhss)])
+                 (quasisyntax/loc out-stx ((bnd.var (~? (~@ : bnd.ty)) new/rhs) ...)))
+               )
+             empty)]
+      [({~datum repeat} i:index-binding a:accumulator-binding M)
+       (list (syntax/loc out-stx (begin i.start i.stop a.init M))
+             (lambda (new-exps)
+               (with-syntax ([(_ new-start new-stop new-init new-M) new-exps])
+                 (syntax/loc out-stx (repeat (i.id new-start new-stop) (a.id (~? (~@ : a.type)) new-init) new-M))
+                 ))
+             empty)]
+      [other-e
+       (list #'other-e
+             (lambda (x) x)
+             empty)])))
 
 (define (weak-fmls fml*)
   (syntax-parse fml*
@@ -306,7 +321,32 @@
      [>= #:<-> <=]
      [< #:<-> >])
    #:syntax-only
-  #:streaming))
+   #:streaming))
+(define program-mutation-condition-dynamic
+  (build-mutation-engine
+   #:mutators
+   (define-simple-mutator (and->or stx)
+     #:pattern ({~datum and} expr ...)
+     #'(or expr ...))
+   (define-simple-mutator (or->and stx)
+     #:pattern ({~datum or} expr ...)
+     #'(and expr ...))
+   (define-simple-mutator (>=-><= stx)
+     #:pattern ({~datum >=} expr ...)
+     #'(<= expr ...))
+   (define-simple-mutator (<=->>= stx)
+     #:pattern ({~datum <=} expr ...)
+     #'(>= expr ...))
+   (define-simple-mutator (<-> stx)
+     #:pattern ({~datum <} expr ...)
+     #'(> expr ...))
+   (define-simple-mutator (>-< stx)
+     #:pattern ({~datum >} expr ...)
+     #'(< expr ...))
+   #:syntax-only
+   #:streaming
+   ))
+
 
 (define program-mutation-negate-cond
   (build-mutation-engine
@@ -344,31 +384,60 @@
 (define mutator-list (list (cons "constant-swap" program-mutation-constant-swap-dynamic)
                            (cons "position-swap" program-mutations-position-swap)
                            (cons "arithmetic" program-mutation-arithmetic-dynamic)
-                           (cons "deletion" program-mutation-deletion)
-                           (cons "condition" program-mutation-condition)
-                           (cons "negate" program-mutation-negate-cond)
-                           (cons "force" program-mutation-force-cond)))
+                           ;;(cons "deletion" program-mutation-deletion)
+                           (cons "condition" program-mutation-condition-dynamic)
+                           ;;(cons "negate" program-mutation-negate-cond)
+                           ;;(cons "force" program-mutation-force-cond)
+                           ))
 
+;; from a synchronization result to the list
+(define (mut-evt->mut-value vec)
+  (vector-ref vec 2)
+  )
+(struct exn:no-srcloc exn:fail (obj))
+
+(define (mutated-syntax->mutated-seq source-stx mutated-stx)
+  (unless (syntax? mutated-stx)
+    (raise (exn:no-srcloc
+            (format "the stx obj ~a is not a syntax object" mutated-stx)
+            (current-continuation-marks)
+            mutated-stx
+            ))
+    )
+  (let ([dest-srcloc (syntax-srcloc mutated-stx)])
+    (syntax-search (lambda (sub)
+                     (equal? (syntax-srcloc sub) dest-srcloc)
+                     ) source-stx)))
 
 (define (mutate-file-and-log-by-mutator filename mutation output-path)
   (unless (directory-exists? output-path)
     (make-directory output-path))
-  (for ([mutators (mutation (read-program-from-name filename))]
-        [i (in-naturals)])
+  (define source-stx (read-program-from-name filename))
+  (for ([mutators (mutation source-stx)]
+        [i (in-naturals)]
+        )
+    (define sync-value (sync mutate-receiver))
     (define mutant-name (format "mutant~v" i))
     (define output-path/mutant (build-path output-path mutant-name))
     (unless (directory-exists? output-path/mutant)
       (make-directory output-path/mutant))
     (define static-port (open-output-file (build-path output-path/mutant (format "~a-static.grift" mutant-name)) #:exists 'replace))
     (define dynamic-port (open-output-file (build-path output-path/mutant (format "~a-dynamic.grift" mutant-name)) #:exists 'replace))
-    
+    (define pos-port (open-output-file (build-path output-path/mutant (format "~a-mutate-pos" mutant-name)) #:exists 'replace))
+
+    ;; the mutate-logger record its infomartion in the "value" part
+    (define mutate-log-msg (mut-evt->mut-value sync-value))
+    ;; (displayln (second mutate-log-msg))
+    (define mutated-seq (mutated-syntax->mutated-seq source-stx (second mutate-log-msg) ))
     ;; (define mutant-name (format "mutant~v.grift" i))
     ;; (define output-filepath (build-path output-path mutant-name))
     ;; (define out-port (open-output-file output-filepath #:exists 'replace))
     (fprintf static-port "~a"  (syntax->string mutators))
     (fprintf dynamic-port "~a" (syntax->string (total-dynamizer mutators)))
+    (fprintf pos-port "~a" (seq->string mutated-seq  ) )
     (close-output-port static-port)
-    (close-output-port dynamic-port)))
+    (close-output-port dynamic-port)
+    (close-output-port pos-port)))
 
 (define (for-the-file in-path file-name out-path)
   (define folder (build-path out-path file-name))
@@ -377,12 +446,13 @@
   (map (lambda (name-mutation)
          (match name-mutation
            [(cons name mutation)
+            (displayln (format "[mutator selected] ~a is being applied" name))
             (define new-folder (build-path folder name))
             (define input-file (build-path in-path  file-name ))
             (mutate-file-and-log-by-mutator (path-add-extension input-file ".grift") mutation new-folder)
             ])) mutator-list))
 
-(define (main-work in-path out-path)
+(define (mutate-main-work in-path out-path)
   (for-each (lambda (x)
               (define relative-file (file-name-from-path x))
               (define file-without-extension (path-replace-extension relative-file #""))
@@ -392,3 +462,20 @@
 ;; (main-work "/home/sch/code/Grift/src/static_blame/test/benchmark/src/" "/home/sch/grift-exp")
 
 
+
+
+
+
+;; (define (test-mutate-and-log infile)
+;;   (let ([origin (read-program-from-name infile)]
+;;         )
+;;     (define static-port (open-output-file "./tmp_test.grift" #:exists 'replace))
+;;     (fprintf static-port "~a"  (syntax->string (stream-first (program-mutation-constant-swap-dynamic origin) ) ))
+;;     (close-output-port static-port)
+;;     (let ([info (mut-evt->mut-value (sync mutate-receiver))])
+;;       (display info)
+;;       (display (syntax-srcloc (second info)))
+;;       (display (syntax-srcloc (third info)))
+;;       )
+;;     )
+;;   )

@@ -4,6 +4,8 @@
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 
 import matplotlib.pyplot as plt
+import matplotlib as mpl
+import matplotlib.transforms as transforms
 import pandas as pd
 import numpy as np
 
@@ -137,13 +139,43 @@ def reportRelatedData(mutator, mutator_data):
     count_strict_hit, _ = strictTriggeredData.shape
     print("count of strict hit: ", count_strict_hit)
 
+def reportPrecision(filteredValidReportData):
 
+    #calculating the precision for normal potential error
+    positiveData = filteredValidReportData[filteredValidReportData['Normal'] > 0]
+    countPositive, _ = positiveData.shape
+    print("count of all normal potential error positive", countPositive)
+
+    blame_data = positiveData[positiveData["blame error?"] == 'true']
+    num_blame, _ = blame_data.shape
+    print("count of blames ", num_blame)
+    normalTriggedData = blame_data[blame_data["hit as normal"] == 'true']
+    count_normal_hit, _ = normalTriggedData.shape
+    print("count of all normal hits ", count_normal_hit)
+    print("normal precision: ", count_normal_hit/countPositive)
+
+    strictPositiveData = filteredValidReportData[filteredValidReportData['Strict'] > 0]
+    countPositive, _ = strictPositiveData.shape
+    print("count of all strict potential error positive", countPositive)
+    blame_data = strictPositiveData[strictPositiveData["blame error?"] == 'true']
+    num_blame, _ = blame_data.shape
+    print("count of blames", num_blame)
+    strictTriggeredData = blame_data[blame_data["hit as strict"] == 'true']
+    count_strict_hit, _ = strictTriggeredData.shape
+    print("count of all strict hits", count_strict_hit)
+    print("strict precision: ", count_strict_hit/countPositive)
+
+
+reportPrecision(filteredValidReportData)
 reportRelatedData('arithmetic', arithData)
 reportRelatedData('condition', condData)
 reportRelatedData('constant-swap', constant_swap_Data)
 reportRelatedData('position-swap', pos_swap_Data)
 
-configuration_data = pd.read_csv("configuration test.csv")
+#first version
+#configuration_data = pd.read_csv("configuration test.csv")
+#second version, 20230824
+configuration_data = pd.read_csv("bug_dectector_new_size_lat_test/lattice_test.csv")
 percentage_line = configuration_data['percentage'].tolist()
 dum_constraint_line = configuration_data['count of dummy constraints'].tolist()
 n_dum_constraint_line = configuration_data['count of not dummy constraints'].tolist()
@@ -168,11 +200,104 @@ ax2.set_ylim(ax1.get_ylim())
 ax3.set_xlabel("How much is typed(%)")
 plt.show()
 
+fig,(ax1,ax2) = plt.subplots(1,2,figsize=(10,5),layout='constrained')
+l1, = ax1.plot(percentage_line, dum_constraint_line,'b+')
+scatter_line = [100*dum_constraint_line[i] / n_constraint_line[i] for i in range(len(percentage_line))]
+sc = ax2.scatter([100*dum_constraint_line[i]/n_constraint_line[i] for i in range(len(n_dum_constraint_line))],n_constraint_line, c = percentage_line, vmin=0,vmax=100, alpha=0.7)
+
+#cmap = mpl.colormaps['viridis']
+#norm = mpl.colors.Normalize(vmin=0, vmax=100)
+
+plt.colorbar(sc,
+              location = 'right', label='proportion of type annotation') #fraction=0.05, pad=0.04,shrink=0.1
+
+
+ax1.set_title("Toal type flows vs. annotation proportion")
+ax2.set_title("Total type flows vs. dummy proportion")
+ax1.set_ylabel("Number of type flows")
+ax2.set_ylabel("Number of type flows")
+ax1.set_xlabel("Type annotation proportion(%)")
+ax2.set_xlabel("Dummy type flow proprotion (%)")
+#ax2.set_ylim(ax1.get_ylim())
+plt.show()
+
+def drawPieMarker(xs, ys, ratios, sizes, colors):
+    assert sum(ratios) <= 1, 'sum of ratios needs to be < 1'
+
+    markers = []
+    previous = 0
+    # calculate the points of the pie pieces
+    for color, ratio in zip(colors, ratios):
+        this = 2 * np.pi * ratio + previous
+        x  = [0] + np.cos(np.linspace(previous, this, 10)).tolist() + [0]
+        y  = [0] + np.sin(np.linspace(previous, this, 10)).tolist() + [0]
+        xy = np.column_stack([x, y])
+        previous = this
+        markers.append({'marker':xy, 's':np.abs(xy).max()**2*np.array(sizes), 'facecolor':color})
+
+    # scatter each of the pie pieces to create pies
+    for marker in markers:
+        ax.scatter(xs, ys, **marker)
+
+def draw_pie(dist,
+             xpos,
+             ypos,
+             size,
+             colors,
+             ax=None):
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10,8))
+
+    # for incremental pie slices
+    cumsum = np.cumsum(dist)
+    cumsum = cumsum/ cumsum[-1]
+    pie = [0] + cumsum.tolist()
+
+    for r1, r2, color in zip(pie[:-1], pie[1:],colors):
+        angles = np.linspace(2 * np.pi * r1, 2 * np.pi * r2)
+        x = [0] + np.cos(angles).tolist()
+        y = [0] + np.sin(angles).tolist()
+
+        xy = np.column_stack([x, y])
+
+        ax.scatter([xpos], [ypos], marker=xy, s=size, facecolor=color)
+
+    return ax
+#create a scatter pie chart
+#fig,ax = plt.subplots(figsize=(10,6))
+#scatter_line = [n_dum_constraint_line[i] / n_constraint_line[i] for i in range(len(percentage_line))]
+#colors = plt.cm.Set3(np.linspace(0,1,len(percentage_line)))
+#indices = np.random.choice(range(len(percentage_line)),size=278, replace= None)
+
+#for i in range(len(n_dum_constraint_line)):
+#for i in indices:
+    #drawPieMarker(percentage_line[i],n_constraint_line[i],[n_dum_constraint_line[i]/n_constraint_line[i],dum_constraint_line[i]/n_constraint_line[i]],[10,10],['yellow','blue'])
+#    draw_pie([n_dum_constraint_line[i],dum_constraint_line[i]],percentage_line[i],n_constraint_line[i],100,['#EEBF6D','#834026'],ax)
+#scatter = ax.scatter([dum_constraint_line[i]/n_constraint_line[i] for i in range(len(n_dum_constraint_line))],n_constraint_line, c = scatter_line, vmin=0,vmax=1, alpha=0.7)
+# for i in range(len(percentage_line)):
+#      wedges, _ = ax.pie([n_dum_constraint_line[i], dum_constraint_line[i]],radius=0.2,colors=colors)
+#      plt.setp(wedges, width=0.1)
+# #
+# #     # Adjust the position of the pie chart markers
+#      trans = transforms.blended_transform_factory(ax.transData, ax.transAxes)
+#      for j, wedge in enumerate(wedges):
+#          trans_offset = transforms.offset_copy(
+#              wedge.get_transform(), x=percentage_line[i], y=n_constraint_line[i], units='dots')
+#          wedge.set_transform(trans_offset)
+# #     #    # Add labels to the pie chart markers
+# #         #ax.text(x[i], y[i], labels[j], ha='center', va='center', fontsize=8)
+#ax.set_title('All type flows of each scenario')
+#ax.set_xlabel('How much is typed(%)')
+#ax.set_ylabel('Number of type flows')
+#plt.show()
+
+
 fig, ax = plt.subplots()
 line1, = ax.plot(percentage_line,config_runtime_line, 'gx',label='run time')
 ax.set_xlabel("How much is typed(%)")
 ax.set_ylabel("Run time(s)")
-ax.set_title("Static Blame Configuration Test")
+#ax.set_title("Static Blame Configuration Test")
+ax.set_title("SLOG Lattice Test")
 plt.show()
 # fig = plt.figure()
 # plt.subplot(1, 3, 1)
@@ -194,7 +319,8 @@ plt.show()
 # plt.ylabel("number of type flows")
 # plt.show()
 
-size_data = pd.read_csv("size test.csv")
+#size_data = pd.read_csv("size test.csv")
+size_data = pd.read_csv("bug_dectector_new_size_lat_test/size_config.csv")
 size_loc = size_data['loc'].tolist()
 size_dum_constraint_line = size_data['count of dummy constraints'].tolist()
 size_time = (size_data['time']/1000).tolist()
@@ -231,7 +357,8 @@ line2, = ax.plot(size_loc,cal_increment(size_time), 'c--', marker='o',label='inc
 ax.legend(handles=[line1,line2])
 ax.set_xlabel('LOC')
 ax.set_ylabel('Run time(s)')
-ax.set_title('Static Blame Size Test')
+#ax.set_title('Static Blame Size Test')
+ax.set_title('SLOG Size Test')
 plt.show()
 
 

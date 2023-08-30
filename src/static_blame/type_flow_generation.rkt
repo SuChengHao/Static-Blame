@@ -47,12 +47,13 @@
   (match-define (Prog (list name unique type) tl*) prgm)
   ;; the first step: gathering point for each identifier.
   (define env (hash))
-  (define toplevel (mk-empty-clabel (srcloc->ppoint)))
+  ;;(define toplevel (mk-empty-clabel (srcloc->ppoint)))
   (define-values (x* ltype*)
     (for/lists (x* ltype*)
                ([tl (in-list  (filter Define? tl*))])
       (match tl
-        [(Define _ id t2 _)
+        [(Define _ id t2 (Ann _ (cons src t1)))
+         (define toplevel (mk-empty-clabel (srcloc->ppoint src)))
          (define clabel (refine-a-clabel toplevel (Idref id)))
          (define ltype (mk-ltype clabel t2))
          (values id ltype)])))

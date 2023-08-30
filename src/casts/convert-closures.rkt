@@ -82,6 +82,7 @@ TODO We can generate better code in this pass for function casts.
  "../logging.rkt"
  "../language/form-map.rkt")
 
+
 (module+ test
   (require
    (for-syntax
@@ -274,6 +275,7 @@ TODO We can generate better code in this pass for function casts.
         ;; these operations for us.
         (debug off u)
         (define propagant (hash-ref opt-env u))
+        
         (define p/r-ret
           (cond
             [(Bound-Var? propagant)
@@ -302,10 +304,10 @@ TODO We can generate better code in this pass for function casts.
             [else propagant]))
         (debug off u p/r-ret))
 
-
+      
       (let rec ([current-expr current-expr])
         (debug off current-expr)
-
+        
         (: App-Fn-build-closure-app : (Var Uid) (Listof CoC5-Expr) -> CoC5-Expr) 
         (define (App-Fn-build-closure-app v e*)
           (Closure-App (Closure-Code v) v e*))
@@ -355,6 +357,7 @@ TODO We can generate better code in this pass for function casts.
                 ;; are functions.
                 (error 'convert-closures "this shouldn't happen: " other)])] 
             [e (let-clos-app (rec e) e*)]))
+        ;;(trace App-Fn-build-closure-app App-Fn-build-data-proxy-app  do-app-fn)
 
         (match current-expr
           ;; Variable found in non-application position
@@ -723,7 +726,8 @@ TODO We can generate better code in this pass for function casts.
           [else (error 'convert-closures "Unkown Fn-Proxy Representation")])]
        [else (error 'convert-closures "unkown cast representation")])] 
     [else (form-map current-expr rec)]))))
-
+  ;;(trace convert-closures-in-expr)
+  
   (define static-env 
     (for/hasheq : (HashTable Uid Propagant)
                 ([b const-bnd*])
@@ -738,11 +742,11 @@ TODO We can generate better code in this pass for function casts.
   
   (define closure-coverted-main-expr : CoC5-Expr
     (convert-closures-in-expr main-expr static-env))
-
+  
   (define code* (sort (hash-values arity->apply-casted-closure-code) bnd-code<?))
   
   (define clos* (sort (hash-values arity->apply-casted-closure-closure) closure<?))
-
+  
   (values clos*
           new-const-bnd*
           (if (null? code*)

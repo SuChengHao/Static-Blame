@@ -21,6 +21,7 @@
          [o-path (get-write-file (build-path "a") "" (output-path))]
          [keep-c? (ir-code-path)]
          [c-path (get-write-file (find-unused-path ".c") ".c" keep-c?)])
+    
     ;; Write the C code to a file
     (with-output-to-file c-path #:mode 'text #:exists 'replace
       (lambda ()

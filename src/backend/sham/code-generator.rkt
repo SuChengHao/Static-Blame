@@ -42,7 +42,6 @@
          [keep-s? (not (not (s-path)))]
          [ll-path (get-write-file o-path ".ll" (ir-code-path))]
          [s-path (get-write-file o-path ".s" (s-path))])
-
     ;; Empty LLVM State
     (define context (LLVMContextCreate))
     ;; Create The Sham IR

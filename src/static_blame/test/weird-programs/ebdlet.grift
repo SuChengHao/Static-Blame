@@ -1,0 +1,17 @@
+(let ([x-k2^2
+               :
+               Dyn
+               (fl* 1 1)])
+          (let ([x-k2^3
+                 :
+                 Dyn
+                 (fl* x-k2^2 1)])
+            (let ([x-k2^4
+                   :
+                   Dyn
+                   (fl* x-k2^3 1)])
+                   (let ([x-k2^5
+                     :
+                     Dyn
+                     (fl* x-k2^4 x-k2^2)])
+                     x-k2^5))))

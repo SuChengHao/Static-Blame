@@ -1,0 +1,4 @@
+(define (sq (x : Float))
+  :
+  Float
+  (: (* (: x Dyn) (: x Dyn)) Dyn))

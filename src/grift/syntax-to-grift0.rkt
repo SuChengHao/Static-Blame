@@ -103,10 +103,11 @@ whatsoever identifiers maintain lexical scope according to symbolic equality.
     [var:id (Var ((env-get-lexical 'parse-form) env #'var))]
     [(var:id rest ...)
      (match (env-lookup env #'var)
-       [(lexical-var var)
-        (define var-src (quote-srcloc #'var))
+       [(lexical-var lvar)
+        ;; (define var-src (quote-srcloc #'var))
+        (define var-src (syntax->srcloc #'var))
         (define as (map (parse-form env) (syntax->list #'(rest ...))))
-        (App (Ann (Var var) var-src) as)]
+        (App (Ann (Var lvar) var-src) as)]
        [(core parse) (parse stx env)]
        [other (error 'parse-form "unmatched: ~a" other)])]
     [(fst rest ...)
